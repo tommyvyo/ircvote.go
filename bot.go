@@ -6,6 +6,7 @@ import (
   "log"
   "net"
   "net/textproto"
+  "strings"
 )
 
 type IRCBot struct {
@@ -26,7 +27,7 @@ func createBot() *IRCBot {
     Server:     "irc.freenode.net",
     Port:       "6665",
     Nick:       "MachineDelVote",
-    Channel:    "#orderdeck",
+    Channel:    "##botVoteTesting",
     Pass:       "",
     Connection: nil,
     User:       "VoteBot",
@@ -49,6 +50,7 @@ func (bot *IRCBot) ServerConnect() (connection net.Conn, err error) {
 }
 
 func main() {
+  votes := make(map[string]int)
   bot := createBot()
   connection, _ := bot.ServerConnect()
   fmt.Fprintf(connection, "USER %s 8 * :%s\n", bot.Nick, bot.Nick)
@@ -63,7 +65,28 @@ func main() {
     if err != nil {
       break
     }
-    fmt.Printf("%s\n", line)
+    words := strings.Split(line, " ")
+    if strings.Contains(line, "PING") {
+      fmt.Printf("\033[92mPONG\n")
+      fmt.Fprintf(connection, "PONG\n")
+    }
+    if strings.Contains(line, bot.Channel) && strings.Contains(line, "!voteUP") {
+      commandIndex := indexOf("!voteUP", words)
+      if commandIndex != -1 {
+        votes[words[commandIndex + 1]] += 1
+        fmt.Fprintf(connection, "PRIVMSG %s Upvoted: %s\n", bot.Channel, words[commandIndex + 1])
+        fmt.Printf("\033[92mPRIVMSG %s Upvoted: %s\n", bot.Channel, words[commandIndex +1])
+      }
+    }
+    fmt.Printf("\033[93m%s\n", line)
   }
 }
 
+func indexOf(value string, mySlice []string) int {
+  for index, curValue := range mySlice {
+    if curValue == value {
+      return index
+    }
+  }
+  return -1
+}
