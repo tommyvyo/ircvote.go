@@ -7,6 +7,7 @@ import (
   "net"
   "net/textproto"
   "strings"
+  "strconv"
 )
 
 var NO_USER_ERROR string = "!No user specified!"
@@ -19,7 +20,6 @@ var bot *IRCBot
 var votes map[string]int
 var connection net.Conn
 var respReq *textproto.Reader
-
 
 type IRCBot struct {
   Server      string
@@ -38,7 +38,7 @@ func createBot() *IRCBot {
   return &IRCBot {
     Server:     "irc.freenode.net",
     Port:       "6665",
-    Nick:       "MachineDelVote",
+    Nick:       "TomBot",
     Channel:    "#orderdeck",
     Pass:       "",
     Connection: nil,
@@ -65,9 +65,9 @@ func main() {
   votes = make(map[string]int)
   bot = createBot()
   connection, _ = bot.ServerConnect()
-  fmt.Fprintf(connection, "USER %s 8 * :%s\n", bot.Nick, bot.Nick)
-  fmt.Fprintf(connection, "NICK %s\n", bot.Nick)
-  fmt.Fprintf(connection, "JOIN %s\n", bot.Channel)
+  sendCommand("USER", []string{bot.Nick, "8 *", bot.Nick})
+  sendCommand("NICK", []string{bot.Nick})
+  sendCommand("JOIN", []string{bot.Channel}) 
   defer connection.Close()
 
   reader := bufio.NewReader(connection)
@@ -78,10 +78,9 @@ func main() {
       break
     }
     fmt.Printf("\033[93m%s\n", line)
-    if strings.Contains(line, "PING") {
-      fmt.Printf("\033[92mPONG\n")
-      fmt.Fprintf(connection, "PONG\n")
-    }
+      if strings.Contains(line, "PING") {
+        sendCommand("PONG", []string{})
+      }
     if strings.Contains(line, bot.Channel) && strings.Contains(line, CMD_VOTE_UP) {
       err = voteUp(line)
       if err != nil {
@@ -103,28 +102,37 @@ func main() {
   }
 }
 
+func sendCommand(command string, parameters []string) {
+  msg := strings.Join(parameters, " ")
+  cmd := fmt.Sprintf("%s %s", command, msg)
+  fmt.Fprintf(connection, strings.Join([]string{cmd, "\n"}, ""));
+  fmt.Printf(strings.Join([]string{cmd, "\n"}, ""));
+}
+
+func sendMessage(recipient string, message []string) {
+  msg := strings.Join(message, " ");
+  sendCommand("PRIVMSG", []string{recipient, ":", msg}) 
+}
+
 func voteUp(line string) error {
   commandLine := line[strings.Index(line, CMD_VOTE_UP):len(line)]
-  if strings.Index(line, CMD_VOTE_UP) != -1 {
+
+   if strings.Index(line, CMD_VOTE_UP) != -1 {
     commands := strings.Split(commandLine, " ")
     if len(commands) ==1 {
-      fmt.Fprintf(connection, "PRIVMSG %s :ERROR: %s\n", bot.Channel, NO_USER_ERROR)
-      fmt.Printf("\033[91mPRIVMSG %s :ERROR: %s\n", bot.Channel, NO_USER_ERROR)
+      sendMessage(bot.Channel, []string{"ERROR: ", NO_USER_ERROR})
     } else {
       voteUser := commands[1]
-      fmt.Fprintf(connection, "NAMES %s\n", bot.Channel)
-      fmt.Printf("\033[92mNAMES %s\n", bot.Channel)
+      sendCommand("NAMES", []string{bot.Channel})
       line, err := respReq.ReadLine()
       if err != nil {
         return err
       }
       if strings.Contains(line, voteUser) {
         votes[voteUser] += 1
-        fmt.Fprintf(connection, "PRIVMSG %s :Upvoted: %s\n", bot.Channel, voteUser)
-        fmt.Printf("\033[92mPRIVMSG %s :Upvoted: %s\n", bot.Channel, voteUser)
+        sendMessage(bot.Channel, []string{"Upvoted:", voteUser})
       } else {
-        fmt.Fprintf(connection, "PRIVMSG %s :ERROR: %s\n", bot.Channel, USER_NOT_FOUND_ERROR)
-        fmt.Printf("\033[91mPRIVMSG %s :ERROR: %s\n", bot.Channel, USER_NOT_FOUND_ERROR)
+        sendMessage(bot.Channel, []string{"Error:", USER_NOT_FOUND_ERROR}) 
       }
     }
   }
@@ -132,27 +140,23 @@ func voteUp(line string) error {
 }
 
 func voteDown(line string) error {
-  commandLine := line[strings.Index(line, CMD_VOTE_DOWN):len(line)]
+commandLine := line[strings.Index(line, CMD_VOTE_DOWN):len(line)]
   if strings.Index(line, CMD_VOTE_DOWN) != -1 {
     commands := strings.Split(commandLine, " ")
     if len(commands) ==1 {
-      fmt.Fprintf(connection, "PRIVMSG %s :ERROR: %s\n", bot.Channel, NO_USER_ERROR)
-      fmt.Printf("\033[91mPRIVMSG %s :ERROR: %s\n", bot.Channel, NO_USER_ERROR)
+      sendMessage(bot.Channel, []string{"ERROR:", NO_USER_ERROR})
     } else {
       voteUser := commands[1]
-      fmt.Fprintf(connection, "NAMES %s\n", bot.Channel)
-      fmt.Printf("\033[92mNAMES %s\n", bot.Channel)
+      sendCommand("NAMES", []string{bot.Channel})
       line, err := respReq.ReadLine()
       if err != nil {
         return err
       }
       if strings.Contains(line, voteUser) {
         votes[voteUser] -= 1
-        fmt.Fprintf(connection, "PRIVMSG %s :Downvoted: %s\n", bot.Channel, voteUser)
-        fmt.Printf("\033[92mPRIVMSG %s :Downvoted: %s\n", bot.Channel, voteUser)
+        sendMessage(bot.Channel, []string{"Downvoted:", voteUser}) 
       } else {
-        fmt.Fprintf(connection, "PRIVMSG %s :ERROR: %s\n", bot.Channel, USER_NOT_FOUND_ERROR)
-        fmt.Printf("\033[91mPRIVMSG %s :ERROR: %s\n", bot.Channel, USER_NOT_FOUND_ERROR)
+        sendMessage(bot.Channel, []string{"ERROR:", USER_NOT_FOUND_ERROR}) 
       }
     }
   }
@@ -160,24 +164,17 @@ func voteDown(line string) error {
 }
 
 func help() {
-  fmt.Fprintf(connection, "PRIVMSG %s :Commands Are: \n", bot.Channel)
-  fmt.Fprintf(connection, "PRIVMSG %s %s\n", bot.Channel, CMD_HELP)
-  fmt.Fprintf(connection, "PRIVMSG %s %s\n", bot.Channel, CMD_VOTE_UP)
-  fmt.Fprintf(connection, "PRIVMSG %s %s\n", bot.Channel, CMD_VOTE_DOWN)
-  fmt.Fprintf(connection, "PRIVMSG %s %s\n", bot.Channel, CMD_VOTES)
-  fmt.Printf("\033[92mPRIVMSG %s :Commands Are: \n", bot.Channel)
-  fmt.Printf("\033[92mPRIVMSG %s %s\n", bot.Channel, CMD_HELP)
-  fmt.Printf("\033[92mPRIVMSG %s %s\n", bot.Channel, CMD_VOTE_UP)
-  fmt.Printf("\033[92mPRIVMSG %s %s\n", bot.Channel, CMD_VOTE_DOWN)
-  fmt.Printf("\033[92mPRIVMSG %s %s\n", bot.Channel, CMD_VOTES)
+  sendMessage(bot.Channel, []string{"Commands are: \n"})
+  sendMessage(bot.Channel, []string{CMD_HELP})
+  sendMessage(bot.Channel, []string{CMD_VOTE_UP})
+  sendMessage(bot.Channel, []string{CMD_VOTE_DOWN})
+  sendMessage(bot.Channel, []string{CMD_VOTES})
 }
 
 func getVotes() {
-  fmt.Fprintf(connection, "PRIVMSG %s :Current Votes Are: \n", bot.Channel)
-  fmt.Printf("\033[92mPRIVMSG %s :Current Votes Are: \n", bot.Channel)
+  sendMessage(bot.Channel, []string{"Current votes are:"})
   for key, value := range votes {
-    fmt.Fprintf(connection, "PRIVMSG %s :+%s: %d \n", bot.Channel, key, value)
-    fmt.Printf("\033[92mPRIVMSG %s :+%s: %d \n", bot.Channel, key, value)
+    sendMessage(bot.Channel, []string{key, ":", strconv.Itoa(value)})
   }
 }
 
