@@ -8,6 +8,7 @@ import (
   "net/textproto"
   "strings"
   "strconv"
+  "os"
 )
 
 var NO_USER_ERROR string = "!No user specified!"
@@ -34,16 +35,16 @@ type IRCBot struct {
 //create a new bot with the given server info
 //currently static but will create prompt for any server
 func createBot() *IRCBot {
+  results := startupPrompt()
   //serverPrompt()
   return &IRCBot {
-    Server:     "irc.freenode.net",
-    Port:       "6665",
-    Nick:       "TomBot",
-    Channel:    "#orderdeck",
-    Pass:       "",
+    Server:     results["host"],
+    Nick:       results["nick"],
+    Channel:    results["channel"],
+    Pass:       results["pass"],
     Connection: nil,
-    User:       "VoteBot",
-    }
+    User:       results["nick"],
+  }
 }
 
 /*On creation of a bot prompts the user for correct server information
@@ -52,7 +53,7 @@ func severPrompt() {
 
 //connects the bot to the server
 func (bot *IRCBot) ServerConnect() (connection net.Conn, err error) {
-  connection, err = net.Dial("tcp", bot.Server + ":" + bot.Port)
+  connection, err = net.Dial("tcp", bot.Server)
   if err != nil {
     log.Fatal("Unable to connect to the specified server", err)
   }
@@ -61,13 +62,44 @@ func (bot *IRCBot) ServerConnect() (connection net.Conn, err error) {
   return bot.Connection, nil
 }
 
+func startupPrompt() map[string]string {
+  reader := bufio.NewReader(os.Stdin)
+  var (
+    host string
+    port string
+    nick string
+    channel string
+    password string
+  )
+
+  fmt.Print("Enter a hostname you'd like to connect to: (e.g: irc.freenode.net) ")
+  host, _ = reader.ReadString('\n')
+  fmt.Print("Enter a port: (e.g: 6667) ")
+  port, _ = reader.ReadString('\n')
+  fmt.Print("Enter a nickname: ")
+  nick, _ = reader.ReadString('\n')
+  fmt.Print("Enter a channel: (e.g: #orderdeck) ")
+  channel, _ = reader.ReadString('\n')
+  fmt.Print("Enter a password:")
+  password, _ = reader.ReadString('\n')
+
+  results := make(map[string]string)
+  results["host"] = strings.Join([]string{strings.TrimSpace(host), strings.TrimSpace(port)}, ":");
+  results["nick"] = nick
+  results["channel"] = channel
+  results["password"] = password
+
+  fmt.Printf(strings.Join([]string{"Connecting to ", results["host"], " and joining ", results["channel"]},""));
+  return results
+}
+
 func main() {
   votes = make(map[string]int)
   bot = createBot()
   connection, _ = bot.ServerConnect()
   sendCommand("USER", []string{bot.Nick, "8 *", bot.Nick})
   sendCommand("NICK", []string{bot.Nick})
-  sendCommand("JOIN", []string{bot.Channel}) 
+  sendCommand("JOIN", []string{bot.Channel})
   defer connection.Close()
 
   reader := bufio.NewReader(connection)
@@ -78,9 +110,9 @@ func main() {
       break
     }
     fmt.Printf("\033[93m%s\n", line)
-      if strings.Contains(line, "PING") {
-        sendCommand("PONG", []string{})
-      }
+    if strings.Contains(line, "PING") {
+      sendCommand("PONG", []string{})
+    }
     if strings.Contains(line, bot.Channel) && strings.Contains(line, CMD_VOTE_UP) {
       err = voteUp(line)
       if err != nil {
@@ -117,7 +149,7 @@ func sendMessage(recipient string, message []string) {
 func voteUp(line string) error {
   commandLine := line[strings.Index(line, CMD_VOTE_UP):len(line)]
 
-   if strings.Index(line, CMD_VOTE_UP) != -1 {
+  if strings.Index(line, CMD_VOTE_UP) != -1 {
     commands := strings.Split(commandLine, " ")
     if len(commands) ==1 {
       sendMessage(bot.Channel, []string{"ERROR: ", NO_USER_ERROR})
@@ -140,7 +172,7 @@ func voteUp(line string) error {
 }
 
 func voteDown(line string) error {
-commandLine := line[strings.Index(line, CMD_VOTE_DOWN):len(line)]
+  commandLine := line[strings.Index(line, CMD_VOTE_DOWN):len(line)]
   if strings.Index(line, CMD_VOTE_DOWN) != -1 {
     commands := strings.Split(commandLine, " ")
     if len(commands) ==1 {
