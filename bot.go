@@ -40,6 +40,7 @@ type IRCBot struct {
   Pass        string
   Connection  net.Conn
 }
+
 func startupPrompt() map[string]string {
   reader := bufio.NewReader(os.Stdin)
   var (
@@ -116,10 +117,6 @@ func createBot() *IRCBot {
     User:       "ircvote-bot",
   }
 }
-
-/*On creation of a bot prompts the user for correct server information
-func severPrompt() {
-}*/
 
 //connects the bot to the server
 func (bot *IRCBot) ServerConnect() (connection net.Conn, err error) {
